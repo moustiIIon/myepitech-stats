@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MyEpitechStats</title>
+    <link rel="stylesheet" href="stats.css" />
+  </head>
+  <body>
+    <div class="viz-root">
+      <header class="topbar">
+        <h1>MyEpitechStats</h1>
+        <div class="actions">
+          <button type="button" id="toggle-table" class="btn btn-ghost">
+            Table view
+          </button>
+          <button type="button" id="refresh" class="btn btn-ghost">
+            Refresh
+          </button>
+          <button type="button" id="clear" class="btn btn-ghost btn-danger">
+            Clear data
+          </button>
+        </div>
+      </header>
+
+      <main id="app">
+        <p id="empty-state" class="empty-state" hidden>
+          No data yet — browse your Projects pages on
+          <strong>my.epitech.eu</strong> (Upcoming, Current, Past) to populate
+          this dashboard. Each page you visit adds its projects here
+          automatically.
+        </p>
+
+        <figure id="chart-figure" class="chart-figure" hidden>
+          <div id="chart" class="chart"></div>
+          <figcaption id="legend" class="legend"></figcaption>
+        </figure>
+
+        <div id="table-wrap" class="table-wrap" hidden>
+          <table id="table">
+            <thead>
+              <tr>
+                <th>Project</th>
+                <th>Module</th>
+                <th>Status</th>
+                <th>Start</th>
+                <th>End</th>
+                <th>Deadline</th>
+              </tr>
+            </thead>
+            <tbody id="table-body"></tbody>
+          </table>
+        </div>
+      </main>
+
+      <div id="tooltip" class="tooltip" role="tooltip" hidden></div>
+    </div>
+
+    <script type="module" src="stats.js"></script>
+  </body>
+</html>
