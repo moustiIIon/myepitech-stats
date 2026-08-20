@@ -13,13 +13,12 @@
   "content_scripts": [
     {
       "matches": ["https://my.epitech.eu/*"],
-      "js": ["content.js"],
+      "js": ["browser-polyfill.js", "content.js"],
       "run_at": "document_idle"
     }
   ],
   "background": {
-    "service_worker": "background.js",
-    "type": "module"
+    "service_worker": "background.js"
   },
   "action": {
     "default_title": "Open MyEpitechStats",

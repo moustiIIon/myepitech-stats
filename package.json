@@ -5,12 +5,20 @@
   "description": "Timeline view of your Epitech modules and projects, scraped from my.epitech.eu, for planning your credit strategy.",
   "type": "module",
   "scripts": {
-    "build": "tsc && node scripts/copy-static.mjs",
+    "build": "tsc && node scripts/copy-static.mjs --target=chrome",
+    "build:firefox": "tsc && node scripts/copy-static.mjs --target=firefox",
+    "build:all": "npm run build && npm run build:firefox",
     "watch": "tsc --watch",
-    "package": "npm run build && node scripts/package-zip.mjs"
+    "package": "npm run build && node scripts/package-zip.mjs --target=chrome",
+    "package:firefox": "npm run build:firefox && node scripts/package-zip.mjs --target=firefox",
+    "package:all": "npm run package && npm run package:firefox"
   },
   "devDependencies": {
     "@types/chrome": "^0.0.280",
+    "@types/webextension-polyfill": "^0.12.5",
     "typescript": "^5.6.3"
+  },
+  "dependencies": {
+    "webextension-polyfill": "^0.12.0"
   }
 }

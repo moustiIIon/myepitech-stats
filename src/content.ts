@@ -1,13 +1,15 @@
 // Scrapes Epitech project cards on any my.epitech.eu page and accumulates
-// them into chrome.storage.local, keyed by project id (deduped across visits
-// to the Upcoming / Current / Past project pages).
+// them into browser.storage.local, keyed by project id (deduped across
+// visits to the Upcoming / Current / Past project pages).
 //
-// This file must stay free of any import/export statement (even `import
-// type`, which TS still treats as making the file a module and appends a
-// stray `export {}` to the output) because it's loaded as a classic
-// (non-module) content script per manifest.json. ProjectRecord/ProjectStore
-// and STORAGE_KEY are duplicated from ./types.ts rather than imported —
-// keep them in sync if that file changes.
+// `browser` (Mozilla's webextension-polyfill, promise-based on both Chrome
+// and Firefox) is a global here, not imported — see browser-global.d.ts.
+// This file must also stay free of any import/export statement of its own
+// (even `import type`, which TS still treats as making the file a module
+// and appends a stray `export {}` to the output) because it's loaded as a
+// classic (non-module) content script per manifest.json. ProjectRecord/
+// ProjectStore and STORAGE_KEY are duplicated from ./types.ts rather than
+// imported — keep them in sync if that file changes.
 interface ProjectRecord {
   id: string;
   year: string;
@@ -85,7 +87,7 @@ type ProjectStore = Record<string, ProjectRecord>;
     };
   }
 
-  function scanProjects(): void {
+  async function scanProjects(): Promise<void> {
     const cards = document.querySelectorAll<HTMLAnchorElement>(
       'a.mantine-Card-root[href*="/projects/"]'
     );
@@ -98,19 +100,18 @@ type ProjectStore = Record<string, ProjectRecord>;
     }
     if (!records.length) return;
 
-    chrome.storage.local.get(STORAGE_KEY, (data: { projects?: ProjectStore }) => {
-      const projects: ProjectStore = data.projects || {};
-      const now = Date.now();
-      for (const record of records) {
-        const existing = projects[record.id];
-        projects[record.id] = {
-          ...record,
-          firstSeenAt: existing?.firstSeenAt ?? now,
-          lastSeenAt: now,
-        };
-      }
-      chrome.storage.local.set({ [STORAGE_KEY]: projects });
-    });
+    const data = (await browser.storage.local.get(STORAGE_KEY)) as { projects?: ProjectStore };
+    const projects: ProjectStore = data.projects || {};
+    const now = Date.now();
+    for (const record of records) {
+      const existing = projects[record.id];
+      projects[record.id] = {
+        ...record,
+        firstSeenAt: existing?.firstSeenAt ?? now,
+        lastSeenAt: now,
+      };
+    }
+    await browser.storage.local.set({ [STORAGE_KEY]: projects });
   }
 
   // --- Sidebar "Timeline" entry + in-page overlay -------------------------
@@ -201,7 +202,7 @@ type ProjectStore = Record<string, ProjectRecord>;
     closeBtn.addEventListener("click", hideOverlay);
 
     const iframe = document.createElement("iframe");
-    iframe.src = chrome.runtime.getURL("stats.html");
+    iframe.src = browser.runtime.getURL("stats.html");
     iframe.title = "MyEpitechStats timeline";
     iframe.style.cssText = "flex:1 1 auto;width:100%;height:100%;border:0;";
 

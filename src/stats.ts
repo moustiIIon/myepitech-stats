@@ -347,7 +347,7 @@ function render(store: ProjectStore): void {
 }
 
 async function loadAndRender(): Promise<void> {
-  const data = (await chrome.storage.local.get(STORAGE_KEY)) as {
+  const data = (await browser.storage.local.get(STORAGE_KEY)) as {
     projects?: ProjectStore;
   };
   render(data.projects || {});
@@ -366,11 +366,11 @@ refreshBtn.addEventListener("click", () => {
 
 clearBtn.addEventListener("click", async () => {
   if (!confirm("Clear all cached project data?")) return;
-  await chrome.storage.local.remove(STORAGE_KEY);
+  await browser.storage.local.remove(STORAGE_KEY);
   await loadAndRender();
 });
 
-chrome.storage.onChanged.addListener((changes, area) => {
+browser.storage.onChanged.addListener((changes, area) => {
   if (area !== "local" || !changes[STORAGE_KEY]) return;
   void loadAndRender();
 });

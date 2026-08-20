@@ -11,7 +11,7 @@ While you browse pages on `my.epitech.eu` that list your projects (Upcoming,
 Current, Past, etc.), the extension reads the project cards already visible
 on the page — title, module name, status, and the three dates shown (start,
 end, deadline) — and saves them in your browser's local extension storage
-(`chrome.storage.local`).
+(available on both Chrome and Firefox).
 
 No other data is read from the page. The extension does not read your
 grades, messages, personal files, or any content outside of these project
@@ -21,7 +21,7 @@ listing pages.
 
 Nowhere but your own browser. The extension has no backend server and makes
 no network requests of its own — it only reads the my.epitech.eu page you
-already have open and writes to Chrome's local storage for your browser
+already have open and writes to your browser's local storage for that
 profile. Nothing is transmitted to the extension's developer or any third
 party.
 
@@ -45,4 +45,5 @@ the extension — either immediately removes everything it has stored.
 
 This is an independent, unofficial tool and is not affiliated with or
 endorsed by Epitech. For questions about this policy, contact the developer
-through the extension's Chrome Web Store listing or its source repository.
+through the extension's store listing (Chrome Web Store or addons.mozilla.org)
+or its source repository.
