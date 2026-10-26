@@ -167,6 +167,27 @@ type ProjectStore = Record<string, ProjectRecord>;
     svg.innerHTML = TIMELINE_ICON_PATHS.map((d) => `<path d="${d}"></path>`).join("");
   }
 
+  // The site has its own light/dark switch (independent of the OS setting),
+  // so our injected UI follows the page itself: Mantine's color-scheme
+  // attribute if present, else the first opaque background found.
+  function siteIsDark(): boolean {
+    const scheme = document.documentElement.getAttribute("data-mantine-color-scheme");
+    if (scheme === "dark") return true;
+    if (scheme === "light") return false;
+    const probes = [
+      ...document.elementsFromPoint(window.innerWidth * 0.6, window.innerHeight * 0.95),
+      document.body,
+      document.documentElement,
+    ];
+    for (const el of probes) {
+      const m = getComputedStyle(el).backgroundColor.match(/rgba?\((\d+), (\d+), (\d+)(?:, ([\d.]+))?\)/);
+      if (m && (m[4] === undefined || parseFloat(m[4]) > 0.5)) {
+        return 0.299 * Number(m[1]) + 0.587 * Number(m[2]) + 0.114 * Number(m[3]) < 128;
+      }
+    }
+    return window.matchMedia("(prefers-color-scheme: dark)").matches;
+  }
+
   function labelNodeOf(root: HTMLElement, label: string): Element {
     return (
       Array.from(root.querySelectorAll("*")).find(
@@ -187,7 +208,7 @@ type ProjectStore = Record<string, ProjectRecord>;
 
     const panel = document.createElement("div");
     panel.style.cssText =
-      "position:absolute;inset:28px;background:#fcfcfb;border-radius:12px;" +
+      "position:absolute;inset:28px;border-radius:12px;" +
       "overflow:hidden;display:flex;flex-direction:column;" +
       "box-shadow:0 24px 64px rgba(0,0,0,0.35);";
 
@@ -197,12 +218,12 @@ type ProjectStore = Record<string, ProjectRecord>;
     closeBtn.textContent = "×";
     closeBtn.style.cssText =
       "position:absolute;top:10px;right:14px;z-index:1;width:32px;height:32px;" +
-      "border-radius:8px;border:none;background:rgba(11,11,11,0.06);" +
-      "font-size:20px;line-height:1;cursor:pointer;color:#0b0b0b;";
+      "border-radius:8px;border:none;" +
+      "font-size:20px;line-height:1;cursor:pointer;";
+    closeBtn.setAttribute("data-meps-close", "");
     closeBtn.addEventListener("click", hideOverlay);
 
     const iframe = document.createElement("iframe");
-    iframe.src = browser.runtime.getURL("stats.html");
     iframe.title = "MyEpitechStats timeline";
     iframe.style.cssText = "flex:1 1 auto;width:100%;height:100%;border:0;";
 
@@ -212,11 +233,28 @@ type ProjectStore = Record<string, ProjectRecord>;
       if (evt.target === overlay) hideOverlay();
     });
     document.body.appendChild(overlay);
+    applyOverlayTheme(overlay);
     return overlay;
+  }
+
+  // Panel/close-button colors and the iframe's theme follow the site.
+  function applyOverlayTheme(overlay: HTMLElement): void {
+    const dark = siteIsDark();
+    const panel = overlay.firstElementChild as HTMLElement;
+    panel.style.background = dark ? "#151515" : "#fcfcfb";
+    const closeBtn = overlay.querySelector<HTMLElement>("[data-meps-close]");
+    if (closeBtn) {
+      closeBtn.style.background = dark ? "rgba(255,255,255,0.1)" : "rgba(11,11,11,0.06)";
+      closeBtn.style.color = dark ? "#ffffff" : "#0b0b0b";
+    }
+    const iframe = overlay.querySelector("iframe");
+    const src = `${browser.runtime.getURL("stats.html")}?theme=${dark ? "dark" : "light"}`;
+    if (iframe && iframe.getAttribute("src") !== src) iframe.setAttribute("src", src);
   }
 
   function showOverlay(): void {
     const overlay = ensureOverlay();
+    applyOverlayTheme(overlay);
     overlay.style.display = "block";
     document.documentElement.style.overflow = "hidden";
   }
@@ -239,7 +277,14 @@ type ProjectStore = Record<string, ProjectRecord>;
   });
 
   function injectNavItem(): void {
-    if (document.getElementById(NAV_ITEM_ID)) return;
+    // The item is a clone carrying inline colors of the theme it was cloned
+    // in, so rebuild it when the site switches between light and dark.
+    const current = document.getElementById(NAV_ITEM_ID);
+    const theme = siteIsDark() ? "dark" : "light";
+    if (current) {
+      if (current.getAttribute("data-meps-theme") === theme) return;
+      current.remove();
+    }
 
     const candidates = REFERENCE_LABELS.map((label) => ({
       label,
@@ -255,6 +300,7 @@ type ProjectStore = Record<string, ProjectRecord>;
 
     const item = styleSource.el.cloneNode(true) as HTMLElement;
     item.id = NAV_ITEM_ID;
+    item.setAttribute("data-meps-theme", theme);
     item.removeAttribute("href");
     item.removeAttribute("aria-current");
     item.removeAttribute("data-active");
@@ -458,6 +504,10 @@ type ProjectStore = Record<string, ProjectRecord>;
     btn.style.left = `${width - TOGGLE_SIZE / 2}px`;
     btn.style.top = `${sidebarTop + 22}px`;
     btn.setAttribute("aria-expanded", String(!isCollapsed()));
+    const dark = siteIsDark();
+    btn.style.background = dark ? "#2a2a2a" : "#fff";
+    btn.style.color = dark ? "#f0f0f0" : "#3a3a3a";
+    btn.style.border = `1px solid ${dark ? "rgba(255,255,255,0.18)" : "rgba(11,11,11,0.12)"}`;
     // Stay out of the way of modals (report, our own timeline overlay...).
     const modalOpen =
       document.querySelector('[role="dialog"], [aria-modal="true"]') != null ||
@@ -509,8 +559,7 @@ type ProjectStore = Record<string, ProjectRecord>;
         "position:fixed;z-index:2147482000;" +
         `width:${TOGGLE_SIZE}px;height:${TOGGLE_SIZE}px;padding:0;` +
         "display:flex;align-items:center;justify-content:center;cursor:pointer;" +
-        "border-radius:50%;border:1px solid rgba(11,11,11,0.12);" +
-        "background:#fff;color:#3a3a3a;box-shadow:0 1px 4px rgba(0,0,0,0.12);";
+        "border-radius:50%;box-shadow:0 1px 4px rgba(0,0,0,0.12);";
       btn.addEventListener("click", toggleSidebar);
       document.body.appendChild(btn);
       let wasCollapsed = false;
@@ -586,14 +635,18 @@ type ProjectStore = Record<string, ProjectRecord>;
     return max ? `${got}/${max} · ${Math.round((got / max) * 100)}%` : `${got}/${max}`;
   }
 
+  function blueChip(): string {
+    return siteIsDark() ? "background:#23306b;color:#a9b8ff;" : "background:#e8ecff;color:#1b3cf5;";
+  }
+
   function setChip(host: HTMLElement, label: string, css: string): void {
     let chip = host.querySelector<HTMLElement>(`:scope > [${TOTAL_ATTR}]`);
     if (!chip) {
       chip = document.createElement("span");
       chip.setAttribute(TOTAL_ATTR, "");
-      chip.style.cssText = css;
       host.appendChild(chip);
     }
+    if (chip.style.cssText !== css) chip.style.cssText = css;
     if (chip.textContent !== label) chip.textContent = label;
   }
 
@@ -632,7 +685,7 @@ type ProjectStore = Record<string, ProjectRecord>;
           heading,
           `Total ${formatScore(total)}`,
           "display:inline-block;margin-left:14px;padding:4px 10px;border-radius:6px;" +
-            "background:#e8ecff;color:#1b3cf5;font-size:14px;font-weight:600;" +
+            `${blueChip()}font-size:14px;font-weight:600;` +
             "vertical-align:middle;white-space:nowrap;"
         );
         if (pendingEvalKey) {
@@ -667,7 +720,7 @@ type ProjectStore = Record<string, ProjectRecord>;
         info.dateEl,
         formatScore(score),
         "display:inline-block;margin-left:10px;padding:2px 8px;border-radius:4px;" +
-          "background:#e8ecff;color:#1b3cf5;font-weight:600;"
+          `${blueChip()}font-weight:600;`
       );
     }
   }
@@ -734,13 +787,87 @@ type ProjectStore = Record<string, ProjectRecord>;
       const existing = el.querySelector(`:scope > [${PCT_ATTR}]`);
       if (existing) {
         if (existing.textContent !== label) existing.textContent = label;
+      } else {
+        const span = document.createElement("span");
+        span.setAttribute(PCT_ATTR, "");
+        span.textContent = label;
+        el.appendChild(span);
+      }
+      injectTitlePercentage(el, pct);
+    }
+  }
+
+  // Also show the percentage right after the project's name. The card is
+  // the largest ancestor holding only this one "X/Y tests" badge; the title
+  // is its biggest (then boldest) text, which beats the small mono badges,
+  // the date and the circle labels without depending on class names.
+  const TITLE_PCT_ATTR = "data-meps-title-pct";
+  const titleCards = new WeakMap<HTMLElement, HTMLElement>();
+
+  function testsCardOf(badge: HTMLElement): HTMLElement | null {
+    let card: HTMLElement | null = null;
+    for (let p = badge.parentElement; p && p !== document.body; p = p.parentElement) {
+      const badges = textLeaves(p).filter((l) => TESTS_BADGE_RE.test(ownText(l)));
+      if (badges.length > 1) break;
+      card = p;
+    }
+    return card;
+  }
+
+  function projectTitleOf(card: HTMLElement): HTMLElement | null {
+    let best: { el: HTMLElement; size: number; weight: number } | null = null;
+    for (const el of textLeaves(card)) {
+      const text = ownText(el);
+      if (
+        TESTS_BADGE_RE.test(text) ||
+        /\d{1,2}\/\d{1,2}\/\d{4}/.test(text) ||
+        /%$/.test(text) ||
+        el.hasAttribute(PCT_ATTR) ||
+        el.hasAttribute(TITLE_PCT_ATTR)
+      ) {
         continue;
       }
-      const span = document.createElement("span");
-      span.setAttribute(PCT_ATTR, "");
-      span.textContent = label;
-      el.appendChild(span);
+      const cs = getComputedStyle(el);
+      const size = parseFloat(cs.fontSize);
+      const weight = parseInt(cs.fontWeight, 10) || 400;
+      if (!best || size > best.size || (size === best.size && weight > best.weight)) {
+        best = { el, size, weight };
+      }
     }
+    return best?.el ?? null;
+  }
+
+  function injectTitlePercentage(badge: HTMLElement, pct: number): void {
+    let card = titleCards.get(badge);
+    if (!card || !card.isConnected) {
+      card = testsCardOf(badge) ?? undefined;
+      if (card) titleCards.set(badge, card);
+    }
+    if (!card) return;
+    const label = `${pct}%`;
+    const dark = siteIsDark();
+    const [bg, fg] =
+      pct >= 80
+        ? dark ? ["#16382a", "#6fdc9a"] : ["#e6f6ec", "#1f7a3c"]
+        : pct >= 50
+        ? dark ? ["#40330f", "#f2c35a"] : ["#fdf3dc", "#9a6a00"]
+        : dark ? ["#431c1c", "#ff8f8f"] : ["#fbe9e9", "#a12a2a"];
+    const css =
+      `display:inline-block;margin-left:10px;padding:1px 8px;border-radius:4px;` +
+      `background:${bg};color:${fg};font-size:0.85em;font-weight:600;vertical-align:middle;`;
+    const existing = card.querySelector<HTMLElement>(`[${TITLE_PCT_ATTR}]`);
+    if (existing) {
+      if (existing.textContent !== label) existing.textContent = label;
+      if (existing.style.cssText !== css) existing.style.cssText = css;
+      return;
+    }
+    const title = projectTitleOf(card);
+    if (!title) return;
+    const chip = document.createElement("span");
+    chip.setAttribute(TITLE_PCT_ATTR, "");
+    chip.textContent = label;
+    chip.style.cssText = css;
+    title.appendChild(chip);
   }
 
   let debounceTimer: ReturnType<typeof setTimeout> | undefined;

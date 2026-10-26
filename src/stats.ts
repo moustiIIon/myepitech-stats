@@ -55,7 +55,14 @@ function classifyStatus(status: string): StatusKey {
   return "muted";
 }
 
+const themeParam = new URLSearchParams(window.location.search).get("theme");
+if (themeParam === "dark" || themeParam === "light") {
+  document.documentElement.setAttribute("data-theme", themeParam);
+}
+
 function isDarkMode(): boolean {
+  const forced = document.documentElement.getAttribute("data-theme");
+  if (forced) return forced === "dark";
   return window.matchMedia("(prefers-color-scheme: dark)").matches;
 }
 
