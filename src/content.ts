@@ -188,6 +188,20 @@ type ProjectStore = Record<string, ProjectRecord>;
     return window.matchMedia("(prefers-color-scheme: dark)").matches;
   }
 
+  // The active item's highlight: a content-less, absolutely positioned,
+  // filled box near the nav (see isActiveLink).
+  function findHighlightPill(from: HTMLElement): HTMLElement | null {
+    let scope: HTMLElement | null = from.parentElement;
+    for (let depth = 0; scope && depth < 8; depth++, scope = scope.parentElement) {
+      for (const el of Array.from(scope.querySelectorAll<HTMLElement>("*"))) {
+        if (el === from || from.contains(el) || el.textContent?.trim() || el.querySelector("svg, img")) continue;
+        const cs = getComputedStyle(el);
+        if (cs.position === "absolute" && cs.backgroundColor !== "rgba(0, 0, 0, 0)") return el;
+      }
+    }
+    return null;
+  }
+
   function labelNodeOf(root: HTMLElement, label: string): Element {
     return (
       Array.from(root.querySelectorAll("*")).find(
@@ -316,6 +330,19 @@ type ProjectStore = Record<string, ProjectRecord>;
       evt.stopPropagation();
       toggleOverlay();
     };
+    // The site's hover highlight is driven by its own JS, which our clone
+    // doesn't have, so paint one ourselves in the active highlight's color
+    // (dimmed), with the same corner radius.
+    item.addEventListener("mouseenter", () => {
+      const pill = findHighlightPill(item);
+      if (!pill) return;
+      const cs = getComputedStyle(pill);
+      item.style.background = `color-mix(in srgb, ${cs.backgroundColor} 65%, transparent)`;
+      item.style.borderRadius = cs.borderRadius;
+    });
+    item.addEventListener("mouseleave", () => {
+      item.style.background = "";
+    });
     // Capture phase: intercepts before the click reaches the SPA's own
     // delegated router listener higher up the tree.
     item.addEventListener("click", onActivate, true);
@@ -399,10 +426,14 @@ type ProjectStore = Record<string, ProjectRecord>;
       // Inner layers keep their full-width inline sizes; clamp them so the
       // centered icons land inside the rail instead of past its clip edge.
       `[${RAIL_ATTR}] *{max-width:100%!important;box-sizing:border-box!important;}` +
-      `[${PILL_ATTR}]{left:8px!important;right:8px!important;width:auto!important;}` +
+      // Active highlight and hover highlight must share one geometry: both
+      // become the same centered 48px-wide box.
+      `[${PILL_ATTR}]{left:50%!important;right:auto!important;width:48px!important;` +
+      `margin-left:-24px!important;}` +
       `[${LABEL_ATTR}]{display:none!important;}` +
       `[${NAVLINK_ATTR}]{justify-content:center!important;padding-left:0!important;` +
-      `padding-right:0!important;gap:0!important;}`;
+      `padding-right:0!important;gap:0!important;width:48px!important;` +
+      `margin-left:auto!important;margin-right:auto!important;}`;
     document.head.appendChild(style);
   }
 
