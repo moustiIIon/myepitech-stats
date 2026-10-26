@@ -1,6 +1,6 @@
 # Privacy policy — MyEpitechStats
 
-**Last updated: 2026-08-19**
+**Last updated: 2026-10-26**
 
 MyEpitechStats is a browser extension that displays a timeline of your
 Epitech modules and projects. This document explains what data it handles.
@@ -13,9 +13,19 @@ on the page — title, module name, status, and the three dates shown (start,
 end, deadline) — and saves them in your browser's local extension storage
 (available on both Chrome and Firefox).
 
+The extension also reads, on the matching pages of `my.epitech.eu`:
+
+- the **Units** page: the name of each unit and whether you are registered
+  to it (the Register / Unregister button), to show only your own units'
+  projects;
+- the **Evaluations** page: when you open a "View report", the per-criterion
+  scores (e.g. "2 / 2") and the title and date of that evaluation, to
+  compute and display the total;
+- the **Test results** page: the "X/Y tests" counters, to display a
+  percentage (computed on the page, not stored).
+
 No other data is read from the page. The extension does not read your
-grades, messages, personal files, or any content outside of these project
-listing pages.
+messages, personal files, or any content outside of these pages.
 
 ## Where the data goes
 
@@ -33,7 +43,8 @@ the extension — either immediately removes everything it has stored.
 
 ## Permissions
 
-- **storage** — to save scraped project data locally between visits, so the
+- **storage** — to save scraped project, unit and evaluation-total data
+  locally between visits, so the
   timeline builds up as you browse instead of needing to be re-scraped
   every time.
 - **tabs** — only to detect whether a MyEpitechStats dashboard tab is

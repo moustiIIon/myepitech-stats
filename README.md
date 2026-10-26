@@ -65,6 +65,26 @@ Plus tu navigues sur les pages "Projects" (Upcoming / Current / Past),
 plus la timeline se remplit automatiquement — l'extension retient tout ce
 qu'elle a déjà vu.
 
+### Seulement tes units
+
+La timeline n'affiche que les projets des units auxquelles tu es inscrit.
+Pour ça, ouvre une fois la page **Units** : l'extension lit les boutons
+*Register* / *Unregister* et retient lesquelles sont les tiennes. Tant que
+tu n'as pas visité cette page, tous les projets sont affichés. Si tu
+t'inscris ou te désinscris plus tard, repasse sur la page Units pour mettre
+à jour la liste.
+
+### Les petits plus sur my.epitech.eu
+
+- **Test results** : un pourcentage de réussite s'ajoute à côté de
+  "X/Y TESTS".
+- **Evaluations** : ouvre un **View report**, le total des notes
+  (ex. `56/58 · 97%`) s'affiche à côté du titre, puis sur la carte de
+  l'évaluation dans la liste. Une évaluation n'a sa note sur la liste
+  qu'après avoir ouvert son rapport une fois.
+- **Menu burger** : le petit bouton rond ☰ sur le bord de la barre
+  latérale la réduit à ses icônes (et la rouvre). Ton choix est retenu.
+
 ## Mes données sont-elles envoyées quelque part ?
 
 Non. Tout reste dans le stockage local de ton navigateur (Chrome ou
