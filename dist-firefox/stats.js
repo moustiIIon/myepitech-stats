@@ -88,6 +88,8 @@ function packLanes(projects) {
     }
     return assignments;
 }
+if (window.self !== window.top)
+    document.documentElement.classList.add("embedded");
 const emptyState = document.getElementById("empty-state");
 const chartFigure = document.getElementById("chart-figure");
 const chartEl = document.getElementById("chart");
@@ -291,9 +293,26 @@ function render(store) {
     chartFigure.hidden = showTable;
     tableWrap.hidden = !showTable;
 }
+// Registered units are scraped from the Units page (see content.ts). Until
+// that page has been visited once there is nothing to filter on, so every
+// project is shown. Project modules drop the "G3 - " / "User Group - "
+// prefix of the unit name, so both forms are compared.
+const REGISTERED_KEY = "registeredUnits";
+function unitKeys(name) {
+    const norm = (s) => s.toLowerCase().replace(/\s+/g, " ").trim();
+    return [norm(name), norm(name.replace(/^[^-]+-\s*/, ""))];
+}
+function onlyRegistered(store, units) {
+    if (!units || !Object.keys(units).length)
+        return store;
+    const registered = new Set(Object.entries(units)
+        .filter(([, isRegistered]) => isRegistered)
+        .flatMap(([name]) => unitKeys(name)));
+    return Object.fromEntries(Object.entries(store).filter(([, p]) => unitKeys(p.module).some((k) => registered.has(k))));
+}
 async function loadAndRender() {
-    const data = (await browser.storage.local.get(STORAGE_KEY));
-    render(data.projects || {});
+    const data = (await browser.storage.local.get([STORAGE_KEY, REGISTERED_KEY]));
+    render(onlyRegistered(data.projects || {}, data.registeredUnits));
 }
 toggleTableBtn.addEventListener("click", () => {
     showTable = !showTable;
@@ -311,7 +330,7 @@ clearBtn.addEventListener("click", async () => {
     await loadAndRender();
 });
 browser.storage.onChanged.addListener((changes, area) => {
-    if (area !== "local" || !changes[STORAGE_KEY])
+    if (area !== "local" || !(changes[STORAGE_KEY] || changes[REGISTERED_KEY]))
         return;
     void loadAndRender();
 });

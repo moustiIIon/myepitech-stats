@@ -226,12 +226,432 @@
         });
         insertAfter.el.insertAdjacentElement("afterend", item);
     }
+    // --- Sidebar rail: collapse the left sidebar down to its icons ----------
+    //
+    // The sidebar has no stable class and is made of several stacked layers
+    // (nav list, white background panel, ...), so instead of guessing one
+    // element we collect every full-height, narrow element touching the left
+    // edge — at a few probe points and among the ancestors of our own
+    // "Timeline" entry — and shrink the outermost ones to a narrow rail. Text
+    // labels are hidden (found by their own text, not by class), leaving the
+    // icons. The page content is offset by the sidebar width via
+    // padding/margin or a grid track, so any offset equal to the old width is
+    // rewritten to the rail width; everything is restored on expand.
+    const TOGGLE_ID = "meps-sidebar-toggle";
+    const STYLE_ID = "meps-rail-style";
+    const RAIL_ATTR = "data-meps-rail";
+    const LABEL_ATTR = "data-meps-label";
+    const NAVLINK_ATTR = "data-meps-navlink";
+    const PILL_ATTR = "data-meps-pill";
+    const COLLAPSED_KEY = "meps-sidebar-collapsed";
+    const RAIL_WIDTH = 72;
+    const TOGGLE_SIZE = 28;
+    let sidebarWidth = 0;
+    let sidebarTop = 0;
+    let sidebarUndo = [];
+    function isSidebarLike(el) {
+        if (el === document.body || el === document.documentElement)
+            return false;
+        if (el.id === TOGGLE_ID || el.id === OVERLAY_ID)
+            return false;
+        const r = el.getBoundingClientRect();
+        return (r.left <= 2 &&
+            r.width > 40 &&
+            r.width < window.innerWidth * 0.5 &&
+            r.height >= window.innerHeight * 0.8);
+    }
+    function findSidebarParts() {
+        const found = new Set();
+        const probes = [
+            [10, window.innerHeight * 0.5],
+            [10, window.innerHeight * 0.8],
+        ];
+        for (const [x, y] of probes) {
+            for (const el of document.elementsFromPoint(x, y)) {
+                if (isSidebarLike(el))
+                    found.add(el);
+            }
+        }
+        for (let el = document.getElementById(NAV_ITEM_ID)?.parentElement ?? null; el; el = el.parentElement) {
+            if (isSidebarLike(el))
+                found.add(el);
+        }
+        // Keep only the outermost: shrinking it shrinks everything inside.
+        return Array.from(found).filter((el) => {
+            for (let p = el.parentElement; p; p = p.parentElement)
+                if (found.has(p))
+                    return false;
+            return true;
+        });
+    }
+    function ensureRailStyle() {
+        if (document.getElementById(STYLE_ID))
+            return;
+        const style = document.createElement("style");
+        style.id = STYLE_ID;
+        style.textContent =
+            `[${RAIL_ATTR}]{width:${RAIL_WIDTH}px!important;min-width:${RAIL_WIDTH}px!important;` +
+                `max-width:${RAIL_WIDTH}px!important;overflow:hidden!important;}` +
+                // Inner layers keep their full-width inline sizes; clamp them so the
+                // centered icons land inside the rail instead of past its clip edge.
+                `[${RAIL_ATTR}] *{max-width:100%!important;box-sizing:border-box!important;}` +
+                `[${PILL_ATTR}]{left:8px!important;right:8px!important;width:auto!important;}` +
+                `[${LABEL_ATTR}]{display:none!important;}` +
+                `[${NAVLINK_ATTR}]{justify-content:center!important;padding-left:0!important;` +
+                `padding-right:0!important;gap:0!important;}`;
+        document.head.appendChild(style);
+    }
+    // Hide every text label inside the rail (nav item names, section
+    // headings) while keeping the icons. Items get a tooltip with their name.
+    function markRailLabels(root) {
+        for (const el of Array.from(root.querySelectorAll("*"))) {
+            if (el.closest("svg") || el.hasAttribute(LABEL_ATTR))
+                continue;
+            // The active item's highlight is a separate absolutely positioned,
+            // content-less box (see isActiveLink); refit it to the rail.
+            if (!el.hasAttribute(PILL_ATTR) &&
+                !el.textContent?.trim() &&
+                !el.querySelector("svg, img") &&
+                getComputedStyle(el).position === "absolute" &&
+                getComputedStyle(el).backgroundColor !== "rgba(0, 0, 0, 0)") {
+                el.setAttribute(PILL_ATTR, "");
+                continue;
+            }
+            const text = ownText(el);
+            if (!text || el.querySelector("svg"))
+                continue;
+            el.setAttribute(LABEL_ATTR, "");
+            const link = el.closest("a, button, [role='button']");
+            if (link && root.contains(link) && !link.hasAttribute(NAVLINK_ATTR)) {
+                link.setAttribute(NAVLINK_ATTR, "");
+                if (!link.title)
+                    link.title = text;
+            }
+        }
+    }
+    function setImportant(el, prop, value) {
+        const old = el.style.getPropertyValue(prop);
+        const oldPriority = el.style.getPropertyPriority(prop);
+        el.style.setProperty(prop, value, "important");
+        sidebarUndo.push(() => {
+            if (old)
+                el.style.setProperty(prop, old, oldPriority);
+            else
+                el.style.removeProperty(prop);
+        });
+    }
+    function isCollapsed() {
+        return document.querySelector(`[${RAIL_ATTR}]`) != null;
+    }
+    function collapseSidebar(parts) {
+        if (!parts.length || isCollapsed())
+            return;
+        ensureRailStyle();
+        const rects = parts.map((el) => el.getBoundingClientRect());
+        sidebarWidth = Math.max(...rects.map((r) => r.width));
+        sidebarTop = Math.min(...rects.map((r) => r.top));
+        const widths = Array.from(new Set(rects.map((r) => Math.round(r.width))));
+        for (const part of parts) {
+            const parent = part.parentElement;
+            if (parent && getComputedStyle(parent).display.includes("grid")) {
+                setImportant(parent, "grid-template-columns", `${RAIL_WIDTH}px minmax(0, 1fr)`);
+            }
+            for (let node = part; node?.parentElement && node !== document.body; node = node.parentElement) {
+                const siblings = Array.from(node.parentElement.children).filter((c) => c !== node);
+                for (const sib of [node.parentElement, ...siblings]) {
+                    const cs = getComputedStyle(sib);
+                    for (const prop of ["padding-left", "margin-left", "left"]) {
+                        const v = parseFloat(cs.getPropertyValue(prop));
+                        if (widths.some((w) => Math.abs(v - w) <= 2)) {
+                            setImportant(sib, prop, `${RAIL_WIDTH}px`);
+                        }
+                    }
+                }
+            }
+        }
+        // Mantine AppShell exposes the offset as a CSS variable.
+        setImportant(document.documentElement, "--app-shell-navbar-offset", `${RAIL_WIDTH}px`);
+        for (const part of parts) {
+            part.setAttribute(RAIL_ATTR, "");
+            markRailLabels(part);
+        }
+    }
+    function expandSidebar() {
+        for (const undo of sidebarUndo.reverse())
+            undo();
+        sidebarUndo = [];
+        for (const attr of [RAIL_ATTR, LABEL_ATTR, NAVLINK_ATTR, PILL_ATTR]) {
+            document.querySelectorAll(`[${attr}]`).forEach((el) => el.removeAttribute(attr));
+        }
+    }
+    // Small round chip straddling the sidebar's right edge, near its top:
+    // out of the way of the logo and the nav items, and it follows the edge
+    // when the sidebar goes between full width and rail.
+    function placeToggle(btn) {
+        const width = isCollapsed() ? RAIL_WIDTH : sidebarWidth;
+        btn.style.left = `${width - TOGGLE_SIZE / 2}px`;
+        btn.style.top = `${sidebarTop + 22}px`;
+        btn.setAttribute("aria-expanded", String(!isCollapsed()));
+        // Stay out of the way of modals (report, our own timeline overlay...).
+        const modalOpen = document.querySelector('[role="dialog"], [aria-modal="true"]') != null ||
+            document.getElementById(OVERLAY_ID)?.style.display === "block";
+        btn.style.display = modalOpen ? "none" : "flex";
+    }
+    function toggleSidebar() {
+        const btn = document.getElementById(TOGGLE_ID);
+        if (!btn)
+            return;
+        const collapsing = !isCollapsed();
+        if (collapsing)
+            collapseSidebar(findSidebarParts());
+        else
+            expandSidebar();
+        placeToggle(btn);
+        try {
+            localStorage.setItem(COLLAPSED_KEY, collapsing ? "1" : "0");
+        }
+        catch {
+            /* storage unavailable — non-fatal */
+        }
+    }
+    function ensureToggle() {
+        const collapsed = isCollapsed();
+        const parts = collapsed
+            ? Array.from(document.querySelectorAll(`[${RAIL_ATTR}]`))
+            : findSidebarParts();
+        let btn = document.getElementById(TOGGLE_ID);
+        if (!parts.length) {
+            btn?.remove();
+            return;
+        }
+        if (collapsed) {
+            // React may have re-rendered new labels into the rail.
+            parts.forEach(markRailLabels);
+        }
+        else {
+            const rects = parts.map((el) => el.getBoundingClientRect());
+            sidebarWidth = Math.max(...rects.map((r) => r.width));
+            sidebarTop = Math.min(...rects.map((r) => r.top));
+        }
+        if (!btn) {
+            btn = document.createElement("button");
+            btn.id = TOGGLE_ID;
+            btn.type = "button";
+            btn.setAttribute("aria-label", "Toggle sidebar");
+            btn.innerHTML =
+                '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+                    'stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>';
+            btn.style.cssText =
+                "position:fixed;z-index:2147482000;" +
+                    `width:${TOGGLE_SIZE}px;height:${TOGGLE_SIZE}px;padding:0;` +
+                    "display:flex;align-items:center;justify-content:center;cursor:pointer;" +
+                    "border-radius:50%;border:1px solid rgba(11,11,11,0.12);" +
+                    "background:#fff;color:#3a3a3a;box-shadow:0 1px 4px rgba(0,0,0,0.12);";
+            btn.addEventListener("click", toggleSidebar);
+            document.body.appendChild(btn);
+            let wasCollapsed = false;
+            try {
+                wasCollapsed = localStorage.getItem(COLLAPSED_KEY) === "1";
+            }
+            catch {
+                /* ignore */
+            }
+            if (wasCollapsed && !collapsed)
+                collapseSidebar(parts);
+        }
+        placeToggle(btn);
+    }
+    window.addEventListener("resize", () => ensureToggle());
+    // --- Evaluations: report total + grade on the list ----------------------
+    //
+    // The "Assessment report" modal lists per-criterion scores ("2 / 2"). We
+    // sum them into a total shown next to the modal title, and remember it per
+    // evaluation (keyed by title + date, read from the card whose "View
+    // report" button was clicked) so the list can show the grade on each
+    // card without reopening anything. Everything is located by text.
+    const SCORE_RE = /^(\d+)\s*\/\s*(\d+)$/;
+    const DATE_TIME_RE = /^\d{2}\/\d{2}\/\d{4}\s+\d{2}:\d{2}$/;
+    const EVAL_STORAGE_KEY = "evalScores";
+    const TOTAL_ATTR = "data-meps-total";
+    let pendingEvalKey = null;
+    function textLeaves(root) {
+        return Array.from(root.querySelectorAll("*")).filter((el) => ownText(el));
+    }
+    function isViewReport(el) {
+        return /^view report$/i.test((el.textContent || "").trim());
+    }
+    function evalCardOf(btn) {
+        for (let el = btn.parentElement; el; el = el.parentElement) {
+            const buttons = Array.from(el.querySelectorAll("button, a, [role='button']")).filter(isViewReport);
+            if (buttons.length > 1)
+                return null;
+            if ((el.textContent || "").includes("Evaluator:") &&
+                textLeaves(el).some((l) => DATE_TIME_RE.test(ownText(l)))) {
+                return el;
+            }
+        }
+        return null;
+    }
+    function evalKeyOf(card) {
+        const leaves = textLeaves(card);
+        const dateEl = leaves.find((l) => DATE_TIME_RE.test(ownText(l)));
+        const title = leaves
+            .map(ownText)
+            .find((t) => t.length > 3 &&
+            !/^(assessment|view report|show (more|less))$/i.test(t) &&
+            !/^evaluator:/i.test(t) &&
+            !DATE_TIME_RE.test(t));
+        if (!dateEl || !title)
+            return null;
+        return { key: `${title} | ${ownText(dateEl)}`, dateEl };
+    }
+    function formatScore({ got, max }) {
+        return max ? `${got}/${max} · ${Math.round((got / max) * 100)}%` : `${got}/${max}`;
+    }
+    function setChip(host, label, css) {
+        let chip = host.querySelector(`:scope > [${TOTAL_ATTR}]`);
+        if (!chip) {
+            chip = document.createElement("span");
+            chip.setAttribute(TOTAL_ATTR, "");
+            chip.style.cssText = css;
+            host.appendChild(chip);
+        }
+        if (chip.textContent !== label)
+            chip.textContent = label;
+    }
+    document.addEventListener("click", (evt) => {
+        const btn = evt.target?.closest("button, a, [role='button']");
+        if (!btn || !isViewReport(btn))
+            return;
+        const card = evalCardOf(btn);
+        pendingEvalKey = (card && evalKeyOf(card)?.key) || null;
+    }, true);
+    async function injectEvalTotals() {
+        // 1) Inside the open report modal: sum the "x / y" criteria badges.
+        const heading = Array.from(document.querySelectorAll("*")).find((el) => /^assessment report$/i.test(ownText(el)));
+        if (heading) {
+            let scope = heading;
+            let scores = [];
+            while (scope && scope !== document.body) {
+                scores = textLeaves(scope).filter((l) => SCORE_RE.test(ownText(l)));
+                if (scores.length)
+                    break;
+                scope = scope.parentElement;
+            }
+            if (scores.length) {
+                const total = { got: 0, max: 0 };
+                for (const el of scores) {
+                    const m = ownText(el).match(SCORE_RE);
+                    total.got += Number(m[1]);
+                    total.max += Number(m[2]);
+                }
+                setChip(heading, `Total ${formatScore(total)}`, "display:inline-block;margin-left:14px;padding:4px 10px;border-radius:6px;" +
+                    "background:#e8ecff;color:#1b3cf5;font-size:14px;font-weight:600;" +
+                    "vertical-align:middle;white-space:nowrap;");
+                if (pendingEvalKey) {
+                    const data = (await browser.storage.local.get(EVAL_STORAGE_KEY));
+                    const all = data.evalScores || {};
+                    const prev = all[pendingEvalKey];
+                    if (!prev || prev.got !== total.got || prev.max !== total.max) {
+                        all[pendingEvalKey] = total;
+                        await browser.storage.local.set({ [EVAL_STORAGE_KEY]: all });
+                    }
+                }
+            }
+        }
+        // 2) On the list: show the remembered grade next to each card's date.
+        const buttons = Array.from(document.querySelectorAll("button, a, [role='button']")).filter(isViewReport);
+        if (!buttons.length)
+            return;
+        const data = (await browser.storage.local.get(EVAL_STORAGE_KEY));
+        const all = data.evalScores || {};
+        for (const btn of buttons) {
+            const card = evalCardOf(btn);
+            const info = card && evalKeyOf(card);
+            const score = info && all[info.key];
+            if (!info || !score)
+                continue;
+            setChip(info.dateEl, formatScore(score), "display:inline-block;margin-left:10px;padding:2px 8px;border-radius:4px;" +
+                "background:#e8ecff;color:#1b3cf5;font-weight:600;");
+        }
+    }
+    // --- Units table: remember which units the student is registered to -----
+    //
+    // On the Units page each row's action button reads "Unregister" when the
+    // student is enrolled and "Register" when not (found by text — the classes
+    // are hashed). Rows only exist in the DOM while rendered, so results are
+    // merged into storage across visits; the dashboard uses them to hide
+    // projects of units the student isn't enrolled in.
+    const REGISTERED_KEY = "registeredUnits";
+    async function scanUnits() {
+        const found = {};
+        for (const row of Array.from(document.querySelectorAll("tr, [role='row']"))) {
+            const action = Array.from(row.querySelectorAll("button, a, [role='button']"))
+                .map((b) => (b.textContent || "").trim().toLowerCase())
+                .find((t) => t === "register" || t === "unregister");
+            if (!action)
+                continue;
+            const cell = Array.from(row.querySelectorAll("td, [role='cell']")).find((c) => (c.textContent || "").trim());
+            const name = (cell?.textContent || "").trim();
+            if (name)
+                found[name] = action === "unregister";
+        }
+        if (!Object.keys(found).length)
+            return;
+        const data = (await browser.storage.local.get(REGISTERED_KEY));
+        const merged = { ...(data.registeredUnits || {}), ...found };
+        if (JSON.stringify(merged) !== JSON.stringify(data.registeredUnits || {})) {
+            await browser.storage.local.set({ [REGISTERED_KEY]: merged });
+        }
+    }
+    // --- Test results: percentage next to the "X/Y TESTS" badge -------------
+    //
+    // The badge's classes are hashed too, so we find it by its own text
+    // ("4/4 tests", uppercased via CSS) and append a child span with the
+    // percentage. The span is marked so the pass is idempotent and the
+    // MutationObserver doesn't loop on our own insertion.
+    const PCT_ATTR = "data-meps-pct";
+    const TESTS_BADGE_RE = /^(\d+)\s*\/\s*(\d+)\s+tests?$/i;
+    function ownText(el) {
+        return Array.from(el.childNodes)
+            .filter((n) => n.nodeType === Node.TEXT_NODE)
+            .map((n) => n.textContent || "")
+            .join("")
+            .trim();
+    }
+    function injectTestPercentages() {
+        const els = document.querySelectorAll("div, span, p");
+        for (const el of Array.from(els)) {
+            const match = ownText(el).match(TESTS_BADGE_RE);
+            if (!match)
+                continue;
+            const total = Number(match[2]);
+            if (!total)
+                continue;
+            const pct = Math.round((Number(match[1]) / total) * 100);
+            const label = ` · ${pct}%`;
+            const existing = el.querySelector(`:scope > [${PCT_ATTR}]`);
+            if (existing) {
+                if (existing.textContent !== label)
+                    existing.textContent = label;
+                continue;
+            }
+            const span = document.createElement("span");
+            span.setAttribute(PCT_ATTR, "");
+            span.textContent = label;
+            el.appendChild(span);
+        }
+    }
     let debounceTimer;
     function scheduleSync() {
         clearTimeout(debounceTimer);
         debounceTimer = setTimeout(() => {
             scanProjects();
+            scanUnits();
             injectNavItem();
+            ensureToggle();
+            injectTestPercentages();
+            injectEvalTotals();
         }, 500);
     }
     scheduleSync();

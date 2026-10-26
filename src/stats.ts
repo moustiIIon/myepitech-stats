@@ -103,6 +103,8 @@ function packLanes(projects: ProjectRecord[]): LaneAssignment[] {
   return assignments;
 }
 
+if (window.self !== window.top) document.documentElement.classList.add("embedded");
+
 const emptyState = document.getElementById("empty-state") as HTMLElement;
 const chartFigure = document.getElementById("chart-figure") as HTMLElement;
 const chartEl = document.getElementById("chart") as HTMLElement;
@@ -346,11 +348,35 @@ function render(store: ProjectStore): void {
   tableWrap.hidden = !showTable;
 }
 
+// Registered units are scraped from the Units page (see content.ts). Until
+// that page has been visited once there is nothing to filter on, so every
+// project is shown. Project modules drop the "G3 - " / "User Group - "
+// prefix of the unit name, so both forms are compared.
+const REGISTERED_KEY = "registeredUnits";
+
+function unitKeys(name: string): string[] {
+  const norm = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim();
+  return [norm(name), norm(name.replace(/^[^-]+-\s*/, ""))];
+}
+
+function onlyRegistered(store: ProjectStore, units: Record<string, boolean> | undefined): ProjectStore {
+  if (!units || !Object.keys(units).length) return store;
+  const registered = new Set(
+    Object.entries(units)
+      .filter(([, isRegistered]) => isRegistered)
+      .flatMap(([name]) => unitKeys(name))
+  );
+  return Object.fromEntries(
+    Object.entries(store).filter(([, p]) => unitKeys(p.module).some((k) => registered.has(k)))
+  );
+}
+
 async function loadAndRender(): Promise<void> {
-  const data = (await browser.storage.local.get(STORAGE_KEY)) as {
+  const data = (await browser.storage.local.get([STORAGE_KEY, REGISTERED_KEY])) as {
     projects?: ProjectStore;
+    registeredUnits?: Record<string, boolean>;
   };
-  render(data.projects || {});
+  render(onlyRegistered(data.projects || {}, data.registeredUnits));
 }
 
 toggleTableBtn.addEventListener("click", () => {
@@ -371,7 +397,7 @@ clearBtn.addEventListener("click", async () => {
 });
 
 browser.storage.onChanged.addListener((changes, area) => {
-  if (area !== "local" || !changes[STORAGE_KEY]) return;
+  if (area !== "local" || !(changes[STORAGE_KEY] || changes[REGISTERED_KEY])) return;
   void loadAndRender();
 });
 
